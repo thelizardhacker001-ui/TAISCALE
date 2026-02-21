@@ -40,7 +40,6 @@ jobs:
           }
 
           for USER_ID in $(seq $START $END); do
-
             echo "Procesando USER $USER_ID"
 
             URL="http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}"
@@ -69,15 +68,15 @@ jobs:
             DNI=$(extract '(?<=txtRefExterna\" value=\").*?(?=\")')
             ESTADO_CIVIL=$(extract '(?<=cboEstadoCivil_I\" type=\"text\" value=\").*?(?=\")')
             EDAD=$(extract '(?<=txtEdad\" value=\").*?(?=\")')
-            FECHA_NAC=$(extract '(?<=txtFecNacimiento_I\" type=\"text\" value=\").*?(?=\")')
+            FECHA_NAC=$(extract '(?<=ctl00_Content_cbAfiliado_PageControl_frmPersonales_txtFecNacimiento_I.*?value=\").*?(?=\")')
             DISCAPACIDAD=$(extract '(?<=cboDiscapacitado_I\" type=\"text\" value=\").*?(?=\")')
             FUERZA=$(extract '(?<=afiFA\">).*?(?=</span>)')
             VIGENCIA=$(extract '(?<=txtFecha_Vigencia_I\" type=\"text\" value=\").*?(?=\")')
-            ALTA_ADMIN=$(extract '(?<=txtFecha_Alta_Administrativa_AcAs.*?value=\").*?(?=\")')
+            ALTA_ADMIN=$(extract '(?<=ctl00_Content_cbAfiliado_PageControl_frmPersonales_txtFecha_Alta_AcAs.*?aria-label=" Editor fecha\. ).*?(?=")')
             PROVINCIA=$(extract '(?<=cboProvincia_I\" type=\"text\" value=\").*?(?=\")')
             LOCALIDAD=$(extract '(?<=cboLocalidad_I\" type=\"text\" value=\").*?(?=\")')
             CALLE=$(extract '(?<=txtCalle\" value=\").*?(?=\")')
-            NUMERO=$(extract '(?<=ctl00_Content_cbAfiliado_PageControl_frmDomicilio_txtNumero.*?value=\").*?(?=\")')
+            NUMERO=$(extract '(?<=ctl00_Content_cbAfiliado_PageControl_frmDomicilio_txtNumero_I.*?value=\").*?(?=\")')
 
             LINE="TIPO = $TIPO | ESTADO = $ESTADO | APELLIDO = $APELLIDO | NOMBRE = $NOMBRE | CODIGO = $CODIGO | DNI = $DNI | ESTADO CIVIL = $ESTADO_CIVIL | EDAD = $EDAD | FECHA DE NACIMIENTO = $FECHA_NAC | DISCAPACIDAD = $DISCAPACIDAD | FUERZAS DE ORIGEN = $FUERZA | VIGENCIA = $VIGENCIA | ALTA ADMINISTRATIVA = $ALTA_ADMIN | PROVIDENCIA = $PROVINCIA | LOCALIDAD = $LOCALIDAD | CALLE = $CALLE | NUMERO = $NUMERO"
 
