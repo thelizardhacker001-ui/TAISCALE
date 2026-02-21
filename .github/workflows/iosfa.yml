@@ -39,8 +39,12 @@ jobs:
             printf '%s' "${VALUE:-}"
           }
 
+          TOTAL=$((END - START + 1))
+          COUNT=0
+
           for USER_ID in $(seq $START $END); do
-            echo "Procesando USER $USER_ID"
+            COUNT=$((COUNT+1))
+            echo "[USER $COUNT/$TOTAL] Procesando $USER_ID"
 
             URL="http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}"
 
@@ -72,7 +76,7 @@ jobs:
             DISCAPACIDAD=$(extract '(?<=cboDiscapacitado_I\" type=\"text\" value=\").*?(?=\")')
             FUERZA=$(extract '(?<=afiFA\">).*?(?=</span>)')
             VIGENCIA=$(extract '(?<=txtFecha_Vigencia_I\" type=\"text\" value=\").*?(?=\")')
-            ALTA_ADMIN=$(extract '(?<=ctl00_Content_cbAfiliado_PageControl_frmPersonales_txtFecha_Alta_AcAs.*?aria-label=" Editor fecha\. ).*?(?=")')
+            ALTA_ADMIN=$(extract '(?<=ctl00_Content_cbAfiliado_PageControl_frmEstadoAdministrativo_txtFecha_Alta_Administrativa_I.*?value=\").*?(?=\")')
             PROVINCIA=$(extract '(?<=cboProvincia_I\" type=\"text\" value=\").*?(?=\")')
             LOCALIDAD=$(extract '(?<=cboLocalidad_I\" type=\"text\" value=\").*?(?=\")')
             CALLE=$(extract '(?<=txtCalle\" value=\").*?(?=\")')
