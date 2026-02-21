@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           START=21000
-          END=22000
+          END=21010
 
           OUTPUT="resultado.txt"
           > "$OUTPUT"
