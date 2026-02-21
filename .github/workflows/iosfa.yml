@@ -2,6 +2,19 @@ name: IOSFA Range Export
 
 on:
   workflow_dispatch:
+    inputs:
+      start:
+        description: "Número inicial de usuario"
+        required: true
+        default: 21000
+      end:
+        description: "Número final de usuario"
+        required: true
+        default: 22000
+      release_name:
+        description: "Nombre del release"
+        required: true
+        default: "Resultado"
 
 jobs:
   validar:
@@ -13,8 +26,9 @@ jobs:
       - name: Ejecutar scraping
         shell: bash
         run: |
-          START=21000
-          END=21010
+          START=${{ github.event.inputs.start }}
+          END=${{ github.event.inputs.end }}
+          RELEASE_NAME="${{ github.event.inputs.release_name }}"
 
           OUTPUT="resultado.txt"
           > "$OUTPUT"
@@ -63,7 +77,7 @@ jobs:
             PROVINCIA=$(extract '(?<=cboProvincia_I\" type=\"text\" value=\").*?(?=\")')
             LOCALIDAD=$(extract '(?<=cboLocalidad_I\" type=\"text\" value=\").*?(?=\")')
             CALLE=$(extract '(?<=txtCalle\" value=\").*?(?=\")')
-            NUMERO=$(extract '(?<=txtNumero&#39;\).*?value=\").*?(?=\")')
+            NUMERO=$(extract '(?<=ctl00_Content_cbAfiliado_PageControl_frmDomicilio_txtNumero.*?value=\").*?(?=\")')
 
             LINE="TIPO = $TIPO | ESTADO = $ESTADO | APELLIDO = $APELLIDO | NOMBRE = $NOMBRE | CODIGO = $CODIGO | DNI = $DNI | ESTADO CIVIL = $ESTADO_CIVIL | EDAD = $EDAD | FECHA DE NACIMIENTO = $FECHA_NAC | DISCAPACIDAD = $DISCAPACIDAD | FUERZAS DE ORIGEN = $FUERZA | VIGENCIA = $VIGENCIA | ALTA ADMINISTRATIVA = $ALTA_ADMIN | PROVIDENCIA = $PROVINCIA | LOCALIDAD = $LOCALIDAD | CALLE = $CALLE | NUMERO = $NUMERO"
 
@@ -76,8 +90,8 @@ jobs:
       - name: Crear Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: resultado-${{ github.run_id }}
-          name: Resultado ${{ github.run_id }}
+          tag_name: "${{ github.event.inputs.release_name }}-${{ github.run_id }}"
+          name: "${{ github.event.inputs.release_name }} ${{ github.run_id }}"
           files: resultado.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
