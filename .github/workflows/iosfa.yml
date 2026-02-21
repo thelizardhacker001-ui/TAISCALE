@@ -1,42 +1,48 @@
-name: IOSFA Scraper
+name: Scraping IOSFA
 
 on:
   workflow_dispatch:
     inputs:
-      start:
-        description: 'Número inicial de usuario'
+      start_user:
+        description: 'Número de usuario inicial'
         required: true
-        default: 21000
-      end:
-        description: 'Número final de usuario'
+        default: '21000'
+      end_user:
+        description: 'Número de usuario final'
         required: true
-        default: 21010
+        default: '21010'
       release_name:
         description: 'Nombre del release'
         required: true
         default: 'Afiliados-IOSFA'
 
 jobs:
-  scrape:
-    runs-on: ubuntu-latest
+  scrape-and-release:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Scrape data
+      - name: Set environment variables
         run: |
-          START=${{ github.event.inputs.start }}
-          END=${{ github.event.inputs.end }}
+          echo "START=${{ github.event.inputs.start_user }}" >> $GITHUB_ENV
+          echo "END=${{ github.event.inputs.end_user }}" >> $GITHUB_ENV
+          echo "RELEASE_NAME=${{ github.event.inputs.release_name }}" >> $GITHUB_ENV
+
+      - name: Scraping IOSFA
+        run: |
           OUTPUT="resultado.txt"
           > $OUTPUT
 
           for USER_ID in $(seq $START $END); do
             echo "Procesando USER $USER_ID"
             URL="http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}"
-
+            
             RESPONSE=$(curl -s -L "$URL" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+              -H "Accept-Language: es-419,es;q=0.9" \
               -H "User-Agent: Mozilla/5.0" \
-              -H "Accept: text/html")
+              -H "Cookie: _gid=GA1.3=xxx; _ga=xxx; IOSFABackOffice=xxx; ASP.NET_SessionId=xxx")
 
             if [[ "$RESPONSE" != *"FUERZA DE ORIGEN"* ]]; then
               echo "USER $USER_ID = SIN DATOS" >> $OUTPUT
@@ -47,44 +53,43 @@ jobs:
               echo "$RESPONSE" | grep -oP "$1" | head -n1 | sed 's/^[ \t]*//;s/[ \t]*$//'
             }
 
-            TIPO=$(extract '(?<=cboTipoDocumentos_I\" type=\"text\" value=\").*?(?=\")')
-            ESTADO=$(extract '(?<=txtEstado\".*?>).*?(?=</span>)')
-            APELLIDO=$(extract '(?<=txtApellidos\" value=\").*?(?=\")')
-            NOMBRE=$(extract '(?<=txtNombres\" value=\").*?(?=\")')
-            CODIGO=$(extract '(?<=txtCodigoCredencial\" value=\").*?(?=\")')
-            DNI=$(extract '(?<=txtRefExterna\" value=\").*?(?=\")')
-            ESTADO_CIVIL=$(extract '(?<=cboEstadoCivil_I\" type=\"text\" value=\").*?(?=\")')
-            EDAD=$(extract '(?<=txtEdad\" value=\").*?(?=\")')
-            FECHA_NAC=$(extract '(?<=txtFecNacimiento_I\" type=\"text\" value=\").*?(?=\")')
-            DISCAPACIDAD=$(extract '(?<=cboDiscapacitado_I\" type=\"text\" value=\").*?(?=\")')
-            FUERZA=$(extract '(?<=afiFA\">).*?(?=</span>)')
-            VIGENCIA=$(extract '(?<=txtFecha_Vigencia_I\" type=\"text\" value=\").*?(?=\")')
-            ALTA_ADMIN=$(extract '(?<=txtFecha_Alta_Administrativa_I\" type=\"text\" value=\").*?(?=\")')
-            PROVINCIA=$(extract '(?<=cboProvincia_I\" type=\"text\" value=\").*?(?=\")')
-            LOCALIDAD=$(extract '(?<=cboLocalidad_I\" type=\"text\" value=\").*?(?=\")')
-            CALLE=$(extract '(?<=txtCalle\" value=\").*?(?=\")')
-            NUMERO=$(extract '(?<=txtNumero_I\" value=\").*?(?=\")')
+            TIPO=$(extract '(?<=cboTipoDocumentos_I" type="text" value=").*?(?=")')
+            ESTADO=$(extract '(?<=txtEstado" style="display:inline-block;border-style:None;width:100%;"><span class=.estado estado-).*?(?=</span>)')
+            APELLIDO=$(extract '(?<=txtApellidos" value=").*?(?=")')
+            NOMBRE=$(extract '(?<=txtNombres" value=").*?(?=")')
+            CODIGO=$(extract '(?<=txtCodigoCredencial" value=").*?(?=")')
+            DNI=$(extract '(?<=txtRefExterna" value=").*?(?=")')
+            ESTADO_CIVIL=$(extract '(?<=cboEstadoCivil_I" type="text" value=").*?(?=")')
+            EDAD=$(extract '(?<=txtEdad" value=").*?(?=")')
+            FECHA_NAC=$(extract '(?<=txtFecNacimiento_I" type="text" value=").*?(?=")')
+            DISCAPACIDAD=$(extract '(?<=cboDiscapacitado_I" type="text" value=").*?(?=")')
+            FUERZA=$(extract '(?<=afiFA">).*?(?=</span>)')
+            VIGENCIA=$(extract '(?<=txtFecha_Vigencia_I" type="text" value=").*?(?=")')
+            ALTA_ADMIN=$(extract '(?<=txtFecha_Alta_Administrativa_I" type="text" value=").*?(?=")')
+            PROVINCIA=$(extract '(?<=cboProvincia_I" type="text" value=").*?(?=")')
+            LOCALIDAD=$(extract '(?<=cboLocalidad_I" type="text" value=").*?(?=")')
+            CALLE=$(extract '(?<=txtCalle" value=").*?(?=")')
+            NUMERO=$(extract '(?<=txtNumero_I" value=").*?(?=")')
 
             LINE="TIPO = $TIPO | ESTADO = $ESTADO | APELLIDO = $APELLIDO | NOMBRE = $NOMBRE | CODIGO = $CODIGO | DNI = $DNI | ESTADO CIVIL = $ESTADO_CIVIL | EDAD = $EDAD | FECHA DE NACIMIENTO = $FECHA_NAC | DISCAPACIDAD = $DISCAPACIDAD | FUERZAS DE ORIGEN = $FUERZA | VIGENCIA = $VIGENCIA | ALTA ADMINISTRATIVA = $ALTA_ADMIN | PROVIDENCIA = $PROVINCIA | LOCALIDAD = $LOCALIDAD | CALLE = $CALLE | NUMERO = $NUMERO"
-            
+
             echo "$LINE" >> $OUTPUT
           done
 
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v2
+      - name: Upload results as release
+        uses: actions/create-release@v1
         with:
-          tag_name: ${{ github.event.inputs.release_name }}
-          release_name: ${{ github.event.inputs.release_name }}
+          tag_name: ${{ env.RELEASE_NAME }}
+          release_name: ${{ env.RELEASE_NAME }}
           body: "Resultados del scraping de IOSFA"
           draft: false
           prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
+          auth: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload resultado.txt
+      - name: Attach resultados.txt to release
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: resultado.txt
+          asset_path: ./resultado.txt
           asset_name: resultado.txt
           asset_content_type: text/plain
