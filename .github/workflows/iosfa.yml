@@ -19,6 +19,12 @@ jobs:
           OUTPUT="resultado.txt"
           > "$OUTPUT"
 
+          extract() {
+            VALUE=$(grep -oP "$1" <<< "$RESPONSE" 2>/dev/null | sed -n '1p')
+            VALUE=$(sed 's/^[ \t]*//;s/[ \t]*$//' <<< "$VALUE")
+            printf '%s' "${VALUE:-}"
+          }
+
           for USER_ID in $(seq $START $END); do
 
             echo "Procesando USER $USER_ID"
@@ -40,12 +46,6 @@ jobs:
               echo "USER $USER_ID = SIN DATOS" >> "$OUTPUT"
               continue
             fi
-
-            extract() {
-              VALUE=$(echo "$RESPONSE" | grep -oP "$1" 2>/dev/null | head -n1)
-              VALUE=$(echo "$VALUE" | sed 's/^[ \t]*//;s/[ \t]*$//')
-              echo "${VALUE:-}"
-            }
 
             TIPO=$(extract '(?<=dxgv dx-al\" style=\"border-left-width:0px;border-right-width:0px;\">).*?(?=</td>)')
             ESTADO=$(extract '(?<=color:#CC0000;font-weight:bold;border-left-width:0px;border-right-width:0px;\">).*?(?=</td>)')
@@ -70,6 +70,8 @@ jobs:
             echo "$LINE" >> "$OUTPUT"
 
           done
+
+          echo "Proceso finalizado."
 
       - name: Crear Release
         uses: softprops/action-gh-release@v2
